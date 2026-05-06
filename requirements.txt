@@ -1,0 +1,26 @@
+# Core data science
+pandas>=1.5.0
+numpy>=1.23.0
+matplotlib>=3.6.0
+seaborn>=0.12.0
+
+# NLP & Sentiment Analysis
+textblob>=0.17.1
+nltk>=3.8.0
+vaderSentiment>=3.3.2
+
+# Financial data & indicators
+yfinance>=0.2.18
+TA-Lib>=0.4.28
+PyNance>=0.1.0
+
+# Text analysis
+scikit-learn>=1.2.0
+
+# Jupyter
+jupyter>=1.0.0
+ipykernel>=6.21.0
+
+# Testing
+pytest>=7.2.0
+pytest-cov>=4.0.0
