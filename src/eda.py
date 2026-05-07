@@ -131,16 +131,19 @@ def top_publishing_days(df: pd.DataFrame, top_n: int = 10) -> pd.DataFrame:
 
 # ── Text Analysis ────────────────────────────────────────────────────────────
 
-def top_tfidf_terms(df: pd.DataFrame, top_n: int = 30, ngram_range: tuple = (1, 2)) -> pd.Series:
-    vec = TfidfVectorizer(stop_words="english", ngram_range=ngram_range, max_features=5000)
-    vec.fit(df["headline"].dropna())
-    scores = vec.idf_
-    terms = vec.get_feature_names_out()
-    # lower idf = more common across docs; invert so higher score = more prominent
-    return pd.Series(1 / scores, index=terms).nlargest(top_n)
+FINANCIAL_PHRASES = [
+    "price target", "earnings beat", "earnings miss", "earnings per share",
+    "FDA approval", "FDA approved", "clinical trial", "drug approval",
+    "interest rate", "rate hike", "rate cut", "federal reserve",
+    "quarterly earnings", "revenue growth", "revenue beat", "guidance raised",
+    "guidance cut", "market cap", "stock buyback", "share repurchase",
+    "dividend", "special dividend", "IPO", "merger", "acquisition",
+    "upgraded", "downgraded", "buy rating", "sell rating", "hold rating",
+    "52 week high", "52 week low", "short squeeze", "insider buying",
+]
 
 
-def top_count_terms(df: pd.DataFrame, top_n: int = 30, ngram_range: tuple = (1, 2)) -> pd.Series:
+def top_count_terms(df: pd.DataFrame, top_n: int = 30, ngram_range: tuple = (1, 1)) -> pd.Series:
     vec = CountVectorizer(stop_words="english", ngram_range=ngram_range, max_features=10000)
     X = vec.fit_transform(df["headline"].dropna())
     counts = X.sum(axis=0).A1
@@ -148,11 +151,42 @@ def top_count_terms(df: pd.DataFrame, top_n: int = 30, ngram_range: tuple = (1, 
     return pd.Series(counts, index=terms).nlargest(top_n)
 
 
+def top_tfidf_terms(df: pd.DataFrame, top_n: int = 30, ngram_range: tuple = (1, 1)) -> pd.Series:
+    vec = TfidfVectorizer(stop_words="english", ngram_range=ngram_range, max_features=5000)
+    X = vec.fit_transform(df["headline"].dropna())
+    # Mean TF-IDF score per term — high score = frequent AND distinctive
+    scores = X.mean(axis=0).A1
+    terms = vec.get_feature_names_out()
+    return pd.Series(scores, index=terms).nlargest(top_n)
+
+
+def financial_phrase_counts(df: pd.DataFrame,
+                            phrases: list[str] = None) -> pd.Series:
+    if phrases is None:
+        phrases = FINANCIAL_PHRASES
+    headlines = df["headline"].dropna().str.lower()
+    counts = {p: int(headlines.str.contains(p, regex=False).sum()) for p in phrases}
+    return pd.Series(counts).sort_values(ascending=False)
+
+
 def plot_top_terms(series: pd.Series, title: str = "Top Terms", save_path: str = None):
     fig, ax = plt.subplots(figsize=(12, 7))
     series.sort_values().plot(kind="barh", ax=ax, color="steelblue", edgecolor="white")
     ax.set_title(title)
-    ax.set_xlabel("Score")
+    ax.set_xlabel("Count")
+    plt.tight_layout()
+    if save_path:
+        plt.savefig(save_path, dpi=150, bbox_inches="tight")
+    return fig
+
+
+def plot_financial_phrases(df: pd.DataFrame, save_path: str = None):
+    counts = financial_phrase_counts(df)
+    counts = counts[counts > 0]
+    fig, ax = plt.subplots(figsize=(12, 7))
+    counts.sort_values().plot(kind="barh", ax=ax, color="coral", edgecolor="white")
+    ax.set_title("Financial Phrase Frequency in Headlines")
+    ax.set_xlabel("Number of Headlines")
     plt.tight_layout()
     if save_path:
         plt.savefig(save_path, dpi=150, bbox_inches="tight")
@@ -163,11 +197,23 @@ def lda_topics(df: pd.DataFrame, n_topics: int = 8, top_words: int = 10,
                sample_n: int = 100_000) -> list[dict]:
     headlines = df["headline"].dropna()
     if len(headlines) > sample_n:
-        headlines = headlines.sample(sample_n, random_state=42)
-    vec = CountVectorizer(stop_words="english", max_features=3000, min_df=5)
+        # Stratified sample across months so all time periods are represented
+        tmp = df.loc[headlines.index, ["headline", "pub_date"]].copy()
+        tmp["_period"] = tmp["pub_date"].dt.to_period("M")
+        n_periods = tmp["_period"].nunique()
+        per_period = max(1, sample_n // n_periods)
+        headlines = (
+            tmp.groupby("_period", group_keys=False)
+               .apply(lambda g: g.sample(min(len(g), per_period), random_state=42))
+               ["headline"]
+               .dropna()
+        )
+        if len(headlines) > sample_n:
+            headlines = headlines.sample(sample_n, random_state=42)
+    vec = CountVectorizer(stop_words="english", max_features=5000, min_df=5)
     X = vec.fit_transform(headlines)
     lda = LatentDirichletAllocation(n_components=n_topics, random_state=42,
-                                    max_iter=10, n_jobs=-1)
+                                    max_iter=15, n_jobs=-1)
     lda.fit(X)
     terms = vec.get_feature_names_out()
     topics = []
@@ -175,6 +221,26 @@ def lda_topics(df: pd.DataFrame, n_topics: int = 8, top_words: int = 10,
         top = [terms[j] for j in comp.argsort()[:-top_words - 1:-1]]
         topics.append({"topic": i + 1, "words": top})
     return topics
+
+
+def plot_lda_topics(topics: list[dict], save_path: str = None):
+    n = len(topics)
+    fig, axes = plt.subplots(2, (n + 1) // 2, figsize=(16, 8))
+    axes = axes.flatten()
+    for ax, t in zip(axes, topics):
+        ax.barh(range(len(t["words"])), range(len(t["words"]), 0, -1),
+                color="steelblue", edgecolor="white")
+        ax.set_yticks(range(len(t["words"])))
+        ax.set_yticklabels(t["words"], fontsize=9)
+        ax.set_title(f"Topic {t['topic']}", fontsize=10)
+        ax.set_xlabel("Rank weight")
+    for ax in axes[n:]:
+        ax.set_visible(False)
+    plt.suptitle("LDA Topics — Top Words per Topic", fontsize=12, y=1.01)
+    plt.tight_layout()
+    if save_path:
+        plt.savefig(save_path, dpi=150, bbox_inches="tight")
+    return fig
 
 
 # ── Time Series – Publishing Hours ───────────────────────────────────────────
