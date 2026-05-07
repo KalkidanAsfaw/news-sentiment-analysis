@@ -126,10 +126,15 @@ def plot_top_terms(series: pd.Series, title: str = "Top Terms", save_path: str =
     return fig
 
 
-def lda_topics(df: pd.DataFrame, n_topics: int = 8, top_words: int = 10) -> list[dict]:
-    vec = CountVectorizer(stop_words="english", max_features=5000, min_df=5)
-    X = vec.fit_transform(df["headline"].dropna())
-    lda = LatentDirichletAllocation(n_components=n_topics, random_state=42, max_iter=10)
+def lda_topics(df: pd.DataFrame, n_topics: int = 8, top_words: int = 10,
+               sample_n: int = 100_000) -> list[dict]:
+    headlines = df["headline"].dropna()
+    if len(headlines) > sample_n:
+        headlines = headlines.sample(sample_n, random_state=42)
+    vec = CountVectorizer(stop_words="english", max_features=3000, min_df=5)
+    X = vec.fit_transform(headlines)
+    lda = LatentDirichletAllocation(n_components=n_topics, random_state=42,
+                                    max_iter=10, n_jobs=-1)
     lda.fit(X)
     terms = vec.get_feature_names_out()
     topics = []
