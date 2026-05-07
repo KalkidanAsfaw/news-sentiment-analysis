@@ -11,6 +11,11 @@ from src.eda import (
 
 @pytest.fixture
 def sample_df():
+    raw = pd.to_datetime([
+        "2021-01-04 10:00:00-04:00", "2021-01-04 14:30:00-04:00",
+        "2021-03-15 09:15:00-04:00", "2021-03-15 16:45:00-04:00",
+        "2021-06-01 08:00:00-04:00",
+    ], format="mixed", utc=False)   # DatetimeIndex, TZ-aware
     return pd.DataFrame({
         "headline": [
             "Short headline",
@@ -20,10 +25,9 @@ def sample_df():
             "Short",
         ],
         "publisher": ["Reuters", "Bloomberg", "Reuters", "CNBC", "Bloomberg"],
-        "date": pd.to_datetime([
-            "2021-01-04", "2021-01-04", "2021-03-15",
-            "2021-03-15", "2021-06-01",
-        ], utc=True),
+        "date": raw.tz_convert("UTC"),
+        "pub_date": pd.to_datetime([t.date() for t in raw]),
+        "pub_hour": pd.array([t.hour for t in raw], dtype="Int64"),
         "stock": ["AAPL", "TSLA", "AAPL", "GOOG", "TSLA"],
     })
 

@@ -11,14 +11,47 @@ from pathlib import Path
 
 def load_data(path: str) -> pd.DataFrame:
     df = pd.read_csv(path, index_col=0)
+    # Parse preserving local timezone so hour extraction is in original local time
+    raw = pd.to_datetime(df["date"], format="mixed", utc=False)
+    # raw may be object dtype with mixed TZ offsets; .apply is safe in both cases
+    df["pub_date"] = pd.to_datetime(
+        raw.apply(lambda x: x.date() if pd.notna(x) else None)
+    )
+    df["pub_hour"] = raw.apply(
+        lambda x: x.hour if pd.notna(x) else None
+    ).astype("Int64")
+    # UTC-normalised datetime kept for consistent time-series resampling
     df["date"] = pd.to_datetime(df["date"], format="mixed", utc=True)
     return df
 
 
+def clean_data(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
+    original = len(df)
+
+    df = df.drop_duplicates()
+    after_dedup = len(df)
+
+    missing_mask = df["headline"].isna() | df["publisher"].isna() | df["date"].isna() | df["pub_date"].isna() | df["pub_hour"].isna()
+    df = df[~missing_mask].reset_index(drop=True)
+    after_missing = len(df)
+
+    report = {
+        "original_rows": original,
+        "duplicates_removed": original - after_dedup,
+        "missing_removed": after_dedup - after_missing,
+        "final_rows": after_missing,
+        "missing_by_column": {
+            col: int(df[col].isna().sum())
+            for col in ["headline", "url", "publisher", "date", "stock"]
+        },
+    }
+    return df, report
+
+
 def headline_length_stats(df: pd.DataFrame) -> pd.Series:
     lengths = df["headline"].str.len()
-    stats = lengths.describe()
-    stats["median"] = lengths.median()
+    stats = lengths.describe().round(2)
+    stats["median"] = round(lengths.median(), 2)
     return stats
 
 
@@ -64,7 +97,7 @@ _FREQ_ALIAS = {"M": "ME", "Q": "QE", "Y": "YE", "A": "YE"}
 
 def publication_date_trends(df: pd.DataFrame, freq: str = "W") -> pd.Series:
     freq = _FREQ_ALIAS.get(freq, freq)
-    return df.set_index("date").resample(freq)["headline"].count()
+    return df.set_index("pub_date").resample(freq)["headline"].count()
 
 
 def plot_publication_trends(df: pd.DataFrame, freq: str = "W", save_path: str = None):
@@ -89,7 +122,7 @@ def plot_publication_trends(df: pd.DataFrame, freq: str = "W", save_path: str = 
 
 
 def top_publishing_days(df: pd.DataFrame, top_n: int = 10) -> pd.DataFrame:
-    daily = df.set_index("date").resample("D")["headline"].count()
+    daily = df.set_index("pub_date").resample("D")["headline"].count()
     top = daily.nlargest(top_n).reset_index()
     top.columns = ["date", "article_count"]
     top["date"] = top["date"].dt.date
@@ -147,15 +180,15 @@ def lda_topics(df: pd.DataFrame, n_topics: int = 8, top_words: int = 10,
 # ── Time Series – Publishing Hours ───────────────────────────────────────────
 
 def publishing_hour_distribution(df: pd.DataFrame) -> pd.Series:
-    return df["date"].dt.hour.value_counts().sort_index()
+    return df["pub_hour"].value_counts().sort_index()
 
 
 def plot_publishing_hours(df: pd.DataFrame, save_path: str = None):
     counts = publishing_hour_distribution(df)
     fig, ax = plt.subplots(figsize=(12, 5))
     ax.bar(counts.index, counts.values, color="steelblue", edgecolor="white")
-    ax.set_title("Article Publication Volume by Hour of Day (UTC)")
-    ax.set_xlabel("Hour (UTC)")
+    ax.set_title("Article Publication Volume by Hour of Day (local time)")
+    ax.set_xlabel("Hour (local time)")
     ax.set_ylabel("Number of Articles")
     ax.set_xticks(range(0, 24))
     plt.tight_layout()
