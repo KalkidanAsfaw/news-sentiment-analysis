@@ -37,6 +37,9 @@ data/outputs/
 .DS_Store
 Thumbs.db
 
+# Reports
+*.docx
+
 # Test coverage
 .coverage
 htmlcov/
