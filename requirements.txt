@@ -12,7 +12,8 @@ vaderSentiment>=3.3.2
 # Financial data & indicators
 yfinance>=0.2.18
 TA-Lib>=0.4.28
-PyNance>=0.1.0
+pynance>=1.0.0
+mplfinance>=0.12.9
 
 # Text analysis
 scikit-learn>=1.2.0
