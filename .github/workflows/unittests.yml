@@ -30,11 +30,7 @@ jobs:
       - name: Install system dependencies for TA-Lib
         run: |
           sudo apt-get update
-          sudo apt-get install -y wget build-essential
-          wget https://prdownloads.sourceforge.net/ta-lib/ta-lib-0.4.0-src.tar.gz
-          tar -xzf ta-lib-0.4.0-src.tar.gz
-          cd ta-lib && ./configure --prefix=/usr && make && sudo make install
-          cd ..
+          sudo apt-get install -y libta-lib-dev
 
       - name: Install Python dependencies
         run: |
