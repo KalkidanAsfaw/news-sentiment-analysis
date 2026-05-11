@@ -11,7 +11,7 @@ vaderSentiment>=3.3.2
 
 # Financial data & indicators
 yfinance>=0.2.18
-TA-Lib>=0.4.28
+TA-Lib>=0.6.0
 pynance>=1.0.0
 mplfinance>=0.12.9
 
