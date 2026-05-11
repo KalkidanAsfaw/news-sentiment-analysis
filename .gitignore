@@ -40,6 +40,9 @@ Thumbs.db
 # Reports
 *.docx
 
+# Backup
+backup/
+
 # Test coverage
 .coverage
 htmlcov/
